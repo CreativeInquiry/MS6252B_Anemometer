@@ -2,20 +2,23 @@
 
 ![ms6252b_in_processing.jpg](images/ms6252b_in_processing.jpg)
 
-This repository documents reverse-engineering work for reading live USB measurments of wind speed, temperature, and relative humidity from a MASTECH MS6252B digital anemometer in Processing/Java and Python: 
+This repository documents how to read live USB measurements of wind speed, temperature, and relative humidity from a MASTECH MS6252B digital anemometer in Processing/Java and Python: 
 
 * [**Processing (Java) v4.5.1 data capture program**](ms6252b_anemometer_pde/ms6252b_anemometer_pde.pde)
 * [**Python3 data capture program**](ms6252b_anemometer_python/ms6252b_readings.py)
 
+To the best of our knowledge, the data streams produced by the MS6252B have not been documented by the manufacturer or elsewhere. The information presented here was obtained by reverse-engineering the data streamed by the device. 
+
 ---
+
+## Overview
 
 <img src="images/ms6252b.png" height="256">
 
-The [MASTECH MS6252B](https://www.mastech-group.com/global/en/ms6252b.html) is a handheld digital anemometer with a fan sensor, LCD, backlight, and USB real-time data upload mode. According to the [user manual](ms6252b_user_manual.pdf) (3MB PDF), it can measure wind speed, ambient temperature, and relative humidity (supported here), as well as air
+The [**MASTECH MS6252B**](https://www.mastech-group.com/global/en/ms6252b.html), [about $100](https://www.amazon.com/MS6252B-Handheld-Digital-Anemometer-Interface/dp/B0G2FZ76PD/ref=sr_1_1?crid=1O8XOCBQWRP4O&dib=eyJ2IjoiMSJ9.2KgFDfbQCUnT8dVQoPpNEK8AWc0tFysKuyoyaZ-5IS2bMJRKnewOtY_uSAy62Ei3UZcHgzUFYTtl5xiKYHUWcSAJe75yJUWkJ5096X12BkoG_lNRKkvm2XSHx4rOi2_OuBb4DbnIHVAdanVNSUluzVd2cQNLDkg1pev9UGnsFHRJGVTJsvFo3Sz21sqhjuykwqsVO_GSpbyd87w2EYIdx1in4E24NtqHL8tvE3x8Z2Cu288B2UdXzsNMDVlitJi7TLQMwULEY84JlYGzDd8PhSsYuu42xQhlCFaH64yD224.UyZKPMc0CdCTGmE_RpiSYytYXyzhqaIyEdLw6Te8HzY&dib_tag=se&keywords=MS6252B&qid=1781942029&sprefix=ms6252b%2Caps%2C142&sr=8-1), is a handheld digital anemometer with a mode for providing real-time data over USB. According to the [user manual](ms6252b_user_manual.pdf) (3MB PDF), it can measure wind speed, ambient temperature, relative humidity, air
 volume, dew point temperature, and wet bulb temperature. The front-panel controls provide unit switching, minimum/maximum readings, temperature mode selection, and the toggling of USB data transmission. The meter can be handheld or mounted for fixed measurements, and it runs from a single 9V battery.
 
-This repository focuses on acquiring the live USB stream: enabling USB mode on the meter, decoding the binary serial packets, and using the readings within Processing/Java or plain Python command-line tools. 
-
+This repository focuses on acquiring the live USB stream: enabling USB mode on the meter, decoding the binary serial packets, and using the readings within Processing/Java or plain Python command-line tools. This project provides code for acquiring wind speed, ambient temperature, and relative humidity, but does not yet support acquisition of air volume, dew point temperature, or wet bulb temperature measurements.
 
 
 ---
@@ -112,7 +115,7 @@ frame[12] == 0x03
 
 ## Decoding Values
 
-All three measurements are encoded as big-endian 16-bit integers.
+This project assumes that the device has been configured to produce metric measurements of relative humidity, temperature, and wind speed; other configurations are not currently supported. All three measurements are encoded as big-endian 16-bit integers.
 
 Relative humidity (%):
 
@@ -295,10 +298,10 @@ python3 ms6252b_anemometer_python/ms6252b_readings.py /dev/cu.usbserial-0001 --o
 
 ### Raw Capture Probe
 
-`ms6252b_probe.py` is for debugging the serial stream. It captures bytes for a
+`ms6252b_probe.py` was used for debugging the serial stream. It captures bytes for a
 fixed number of seconds, prints hex dumps, and shows any decoded frames.
 
-On macOS:
+On MacOS:
 
 ```sh
 python3 ms6252b_anemometer_python/ms6252b_probe.py /dev/cu.usbserial-0001 --baud 9600 --mode 8N1 --seconds 5
@@ -321,9 +324,6 @@ To scan several common UART settings:
 ```sh
 python3 ms6252b_anemometer_python/ms6252b_probe.py /dev/cu.usbserial-0001 --scan --seconds 2
 ```
-
-The expected setting for this meter is still `9600-8N1`; scanning is mostly
-useful if you are debugging another unit or confirming a setup from scratch.
 
 ---
 
