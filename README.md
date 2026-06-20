@@ -1,9 +1,8 @@
-## Getting Serial Data from the MASTECH MS6252B Digital Anemometer
+## Getting Live Serial Data from the MASTECH MS6252B Digital Anemometer
 
 ![ms6252b_in_processing.jpg](images/ms6252b_in_processing.jpg)
 
-This repository documents reverse-engineering work for reading live USB data
-from a MASTECH MS6252B digital anemometer in Processing/Java and Python: 
+This repository documents reverse-engineering work for reading live USB measurments of wind speed, temperature, and relative humidity from a MASTECH MS6252B digital anemometer in Processing/Java and Python: 
 
 * [**Processing (Java) v4.5.1 data capture program**](ms6252b_anemometer_pde/ms6252b_anemometer_pde.pde)
 * [**Python3 data capture program**](ms6252b_anemometer_python/ms6252b_readings.py)
@@ -12,41 +11,12 @@ from a MASTECH MS6252B digital anemometer in Processing/Java and Python:
 
 <img src="images/ms6252b.png" height="256">
 
-The [MASTECH MS6252B](https://www.mastech-group.com/global/en/ms6252b.html) is a handheld digital anemometer with a fan sensor, LCD, backlight,
-and USB real-time data upload mode. According to the
-[local user manual](ms6252b_user_manual.pdf), it can measure wind speed, air
-volume, ambient temperature, relative humidity, dew point temperature, and wet
-bulb temperature. The front-panel controls provide unit switching, reading hold,
-minimum/maximum readings, temperature mode selection, and USB upload toggling.
-The meter can be handheld or mounted for fixed measurements, and it runs from a
-single 9V battery.
+The [MASTECH MS6252B](https://www.mastech-group.com/global/en/ms6252b.html) is a handheld digital anemometer with a fan sensor, LCD, backlight, and USB real-time data upload mode. According to the [user manual](ms6252b_user_manual.pdf) (3MB PDF), it can measure wind speed, ambient temperature, and relative humidity (supported here), as well as air
+volume, dew point temperature, and wet bulb temperature. The front-panel controls provide unit switching, minimum/maximum readings, temperature mode selection, and the toggling of USB data transmission. The meter can be handheld or mounted for fixed measurements, and it runs from a single 9V battery.
 
-This project focuses on the live USB stream: enabling USB mode on the meter, decoding the binary serial packets, and using the readings from Processing/Java or plain Python command-line tools.
+This repository focuses on acquiring the live USB stream: enabling USB mode on the meter, decoding the binary serial packets, and using the readings within Processing/Java or plain Python command-line tools. 
 
----
 
-The meter exposes a Silicon Labs CP210x USB-to-UART bridge. On macOS it appears
-as a serial device like:
-
-```text
-/dev/cu.usbserial-0001
-```
-
-On Linux / Raspberry Pi it appears as something like:
-
-```text
-/dev/ttyUSB0
-/dev/ttyUSB1
-/dev/ttyUSB2
-```
-
-The meter's data stream is binary, not ASCII text. Opening it in a terminal program such as
-`picocom` will show strange characters even when the serial settings are
-correct. Bytes such as `0x01`, `0x03`, `0x92`, and `0xA1`
-are control or non-printable bytes, so terminal programs render them as odd
-symbols or replacement characters. That does not mean the baud rate is wrong.
-For this meter, a repeating 13-byte binary pattern at `9600-8-N-1` is the useful
-signal.
 
 ---
 
@@ -71,9 +41,12 @@ Long-pressing the same key again for about 3 seconds disables USB real-time
 uploading. If the serial port exists but no bytes are arriving, check that the
 `USB` indicator is visible on the meter display.
 
+
+---
+
 ## Serial Settings
 
-The observed working UART settings are `9600-8-N-1`, i.e.,
+The MS6252B's observed working UART settings are `9600-8-N-1`, i.e.,
 
 ```text
 9600 baud
@@ -83,15 +56,28 @@ no parity
 no flow control
 ```
 
-## Packet Format
+The meter exposes a Silicon Labs CP210x USB-to-UART bridge. On macOS it appears
+as a serial device like (e.g) `/dev/cu.usbserial-0001`. On Linux / Raspberry Pi it appears as something like: `/dev/ttyUSB0`
 
-The meter sends a repeating 13-byte packet.
+The meter's data stream is binary, not ASCII text. Opening it in a terminal program such as `picocom` will show unintelligible characters even when the serial settings are
+correct. This is because values such as `0x01`, `0x03`, `0x92`, and `0xA1`
+are control or non-printable bytes, so terminal programs render them as odd
+symbols or replacement characters. That does not mean the baud rate is wrong.
+For this meter, a repeating 13-byte binary pattern at `9600-8-N-1` is the useful
+signal.
+
+
+---
+
+## MS6252B Data Packet Format
+
+The meter sends a repeating 13-byte packet with the following format:
 
 ```text
 SS 01 RH_HI RH_LO 00 00 T_HI T_LO 01 01 W_HI W_LO 03
 ```
 
-The packet contains relative humidity, temperature, and wind speed.
+The packet contains relative humidity, temperature, and wind speed. Based on our observations, these are the bytes: 
 
 | Byte index | Name | Meaning |
 | --- | --- | --- |
@@ -109,10 +95,7 @@ The packet contains relative humidity, temperature, and wind speed.
 | 11 | `W_LO` | Wind speed low byte |
 | 12 | `0x03` | Frame terminator |
 
-The most useful way to synchronize is to buffer bytes until `0x03`, then look
-back 13 bytes and validate the constant positions.
-
-The current Processing parser checks:
+The most useful way to synchronize is to buffer bytes until you receive `0x03`, and then look back 13 bytes and validate the constant positions. For example, the Processing/Java parser checks:
 
 ```text
 frame[1]  == 0x01
@@ -124,26 +107,26 @@ frame[9]  == 0x01
 frame[12] == 0x03
 ```
 
-That validation is based on the values observed so far. The wind high byte is
-not treated as constant, because higher wind values may use it.
+
+---
 
 ## Decoding Values
 
 All three measurements are encoded as big-endian 16-bit integers.
 
-Relative humidity:
+Relative humidity (%):
 
 ```text
 RH_percent = uint16_be(RH_HI, RH_LO) / 10.0
 ```
 
-Temperature:
+Temperature (°C):
 
 ```text
 temperature_C = int16_be(T_HI, T_LO) / 10.0
 ```
 
-Wind speed:
+Wind speed (m/s):
 
 ```text
 wind_m_per_s = uint16_be(W_HI, W_LO) / 100.0
@@ -169,9 +152,11 @@ float temperatureC = signed16(frame[6], frame[7]) / 10.0;
 float windSpeed = unsigned16(frame[10], frame[11]) / 100.0;
 ```
 
+---
+
 ## Example Frames
 
-Example low-wind frame:
+Here's an example frame:
 
 ```text
 01 01 01 92 00 00 00 63 01 01 00 2A 03
@@ -214,14 +199,8 @@ temperature = 0x00F3 / 10  = 24.3 C
 wind        = 0x001C / 100 = 0.28 m/s
 ```
 
-## High Wind Values
 
 Wind speed is encoded as a big-endian unsigned 16-bit integer divided by 100.
-
-An earlier parser assumed `W_HI` was always `0x00`, which made higher wind
-readings fail once the encoded value needed more than the low byte. The parser
-now treats `W_HI W_LO` as a full 16-bit field, and values above `1.78 m/s` have
-been verified against the meter display.
 
 ```text
 rawWind = uint16_be(W_HI, W_LO)
@@ -231,15 +210,14 @@ displayed wind = rawWind / 100.0
 The Processing sketch currently prints both `rawWind` and the last accepted
 frame in hex, which is useful when checking any new range or unit setting.
 
+
 ---
 
-## Processing Sketch
+## Processing/Java Sketch
 
-The Processing sketch is in:
+The Processing/Java sketch is known to work with [Processing v.4.5.1](https://processing.org/download), and can be found here:
 
-```text
-ms6252b_anemometer_pde/ms6252b_anemometer_pde.pde
-```
+* [`ms6252b_anemometer_pde/ms6252b_anemometer_pde.pde`](ms6252b_anemometer_pde/ms6252b_anemometer_pde.pde)
 
 It automatically scans `Serial.list()` and prefers ports whose names contain:
 
@@ -259,22 +237,16 @@ r    reconnect serial port
 m    toggle mouse fallback if no serial value has been parsed
 ```
 
+---
+
 ## Python Programs
 
-This repository also includes Python command-line programs in:
+This repository also includes two Python command-line programs: 
 
-```text
-ms6252b_anemometer_python/
-```
+* [`ms6252b_anemometer_python/ms6252b_readings.py`](ms6252b_anemometer_python/ms6252b_readings.py) — live terminal display of decoded readings
+* [`ms6252b_anemometer_python/ms6252b_probe.py`](ms6252b_anemometer_python/ms6252b_probe.py) — raw serial capture / debugging probe
 
 They use only the Python standard library; no `pip install` step is required.
-
-There are two scripts:
-
-```text
-ms6252b_readings.py    live terminal display of decoded readings
-ms6252b_probe.py       raw serial capture / debugging probe
-```
 
 Only one program can open the serial port at a time. Close Processing, serial
 monitors, or the other Python script before running one of these.
@@ -302,6 +274,7 @@ Example output:
 reading /dev/cu.usbserial-0001 at 9600-8N1; press Ctrl-C to stop
 19:24:10  wind= 0.42 m/s  temp=  9.9 C  RH= 40.2%
 19:24:11  wind= 0.85 m/s  temp= 10.4 C  RH= 41.7%
+19:24:12  wind= 1.17 m/s  temp= 10.2 C  RH= 42.3%
 ```
 
 Useful options:
